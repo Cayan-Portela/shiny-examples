@@ -68,63 +68,39 @@ RUN useradd --create-home --shell /bin/bash docker \
     && adduser docker sudo
 
 # =====================================================================
-# Shiny Server
-# =====================================================================
-
-RUN apt-get install -y \
-    gdebi-core \
-    pandoc \
-    pandoc-citeproc \
-    libcurl4-gnutls-dev \
-    libcairo2-dev \
-    libxt-dev \
-    libssl-dev
-
-# Download and install shiny server
-RUN wget --no-verbose https://s3.amazonaws.com/rstudio-shiny-server-os-build/ubuntu-14.04/x86_64/VERSION -O "version.txt" && \
-    VERSION=$(cat version.txt)  && \
-    wget --no-verbose "https://s3.amazonaws.com/rstudio-shiny-server-os-build/ubuntu-14.04/x86_64/shiny-server-$VERSION-amd64.deb" -O ss-latest.deb && \
-    gdebi -n ss-latest.deb && \
-    rm -f version.txt ss-latest.deb && \
-    R -e "install.packages(c('shiny', 'rmarkdown'))" && \
-    cp -R /usr/local/lib/R/site-library/shiny/examples/* /srv/shiny-server/
-
-EXPOSE 3838
-
-COPY shiny-server.sh /usr/bin/shiny-server.sh
-
-CMD ["/usr/bin/shiny-server.sh"]
-
-# =====================================================================
 # Shiny Examples
 # =====================================================================
 
 RUN apt-get update && apt-get install -y \
-    libxml2-dev
+    libxml2-dev \
+    libssl-dev \
+    libcairo2-dev \
+    libxt-dev \
+    libcurl4-openssl-dev \
+    parallel
 
-RUN R -e "install.packages(c('devtools', 'packrat'))"
+RUN bash -c 'echo "will cite" | parallel --bibtex'
 
-# For deploying apps from a container
-RUN R -e "devtools::install_github('rstudio/rsconnect')"
+RUN R -e "install.packages(c('devtools', 'packrat', 'knitr'))"
 
 # Install shiny-examples, and fix permissions for apps that require write
-# access.
-RUN cd /srv && \
-    mv shiny-server shiny-server-orig && \
+# access to /shiny-examples
+RUN cd / && \
     wget -nv https://github.com/rstudio/shiny-examples/archive/master.zip && \
     unzip -x master.zip && \
-    mv shiny-examples-master shiny-server && \
-    rm master.zip && \
-    cd shiny-server && \
+    mv shiny-examples-master shiny-examples && \
+    cd shiny-examples && \
     chmod 777 022-unicode-chinese 055-observer-demo 059-reactive-poll-and-file-reader
 
 # Autodetect packages needed for the examples (will install from CRAN)
-RUN R -e "install.packages(packrat:::dirDependencies('/srv/shiny-server'))"
+RUN R -e "install.packages(packrat:::dirDependencies('/shiny-examples'))"
 
 # Packages that need to be installed from GitHub
 # For 087-crandash
 RUN R -e "devtools::install_github('hadley/shinySignals')"
 RUN R -e "devtools::install_github('jcheng5/bubbles')"
 
-# Install latest shiny from GitHub
-RUN R -e "devtools::install_github('rstudio/shiny')"
+# For deploying apps to RSC
+RUN R -e "devtools::install_github('rstudio/rsconnect')"
+
+COPY deployApp.R /usr/local/bin
